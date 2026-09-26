@@ -1,0 +1,1 @@
+from app.copilot.models import CopilotConversation, CopilotMessage  # noqa: F401
