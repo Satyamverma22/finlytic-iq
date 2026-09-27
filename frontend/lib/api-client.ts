@@ -32,3 +32,18 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (res.status === 204) return undefined as T;
   return res.json();
 }
+
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: formData });
+
+  if (!res.ok) {
+    let message = `Upload failed (${res.status})`;
+    try { message = (await res.json()).detail || message; } catch {}
+    throw new ApiError(res.status, message);
+  }
+  return res.json();
+}
