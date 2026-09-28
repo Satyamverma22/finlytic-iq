@@ -18,9 +18,11 @@ async def search_chunks(
     """
     Embeds query_text and finds the most semantically similar chunks,
     restricted to candidate_scheme_ids (the output of metadata filtering).
+
     Returns (chunk, cosine_distance) pairs, ordered most-similar first.
     Lower distance = more similar; 0 = identical, 2 = maximally dissimilar.
     """
+
     if not candidate_scheme_ids:
         return []
 
