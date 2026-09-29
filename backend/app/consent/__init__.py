@@ -1,0 +1,1 @@
+from app.consent.models import Consent  # noqa: F401

@@ -23,18 +23,12 @@ class ToolDefinition:
     name: str
     description: str
     parameters: dict  # JSON-schema shape, provider-neutral
-    executor: Callable[..., Awaitable[dict]]  # always (db, user_id, **kwargs) -> dict
+    executor: Callable[..., Awaitable[dict]]
+    required_consent: str
 
 
 # ---------------------------------------------------------------------------
-# Executors — every one of these is a thin wrapper around an ALREADY-BUILT,
-# ALREADY-TESTED service function. No new business logic lives here. Each
-# executor's signature is ALWAYS (db, user_id, **kwargs) — user_id comes from
-# the authenticated request context (Step 2/7 will wire this), NEVER from
-# the LLM's tool-call arguments. This is non-negotiable: an LLM that could
-# supply its own user_id would let a cleverly-worded prompt read another
-# user's financial data. The tool schemas below deliberately do not expose
-# user_id as a parameter the model can set at all.
+# Executors
 # ---------------------------------------------------------------------------
 
 async def tool_get_financial_health(
@@ -47,9 +41,12 @@ async def tool_get_financial_health(
     try:
         result = await compute_metrics(db, user_id, year, month)
     except ProfileNotSetError:
-        return {"error": "No financial profile set up yet. Ask the user to set up their income and savings first."}
+        return {
+            "error": "No financial profile set up yet. Ask the user to set up their income and savings first."
+        }
 
     indicator = build_health_indicator(result)
+
     return {
         "period": f"{year}-{month:02d}",
         "monthly_income": str(result.monthly_income),
@@ -58,7 +55,8 @@ async def tool_get_financial_health(
         "dti": f"{result.dti:.1%}",
         "emergency_coverage_months": (
             f"{result.emergency_coverage_months:.1f}"
-            if result.emergency_coverage_months is not None else None
+            if result.emergency_coverage_months is not None
+            else None
         ),
         "category": indicator.category,
         "positive_factors": indicator.positive_factors,
@@ -69,8 +67,12 @@ async def tool_get_financial_health(
 
 
 async def tool_simulate_loan(
-    db: AsyncSession, user_id, label: str,
-    proposed_amount: float, annual_interest_rate: float, tenure_months: int,
+    db: AsyncSession,
+    user_id,
+    label: str,
+    proposed_amount: float,
+    annual_interest_rate: float,
+    tenure_months: int,
 ) -> dict:
     payload = ScenarioCreate(
         label=label,
@@ -78,13 +80,17 @@ async def tool_simulate_loan(
         annual_interest_rate=Decimal(str(annual_interest_rate)),
         tenure_months=tenure_months,
     )
+
     today = date.today()
+
     try:
         scenario, risk_category, risk_factors = await build_and_save_scenario(
             db, user_id, payload, today.year, today.month
         )
     except CreditProfileNotSetError:
-        return {"error": "No financial profile set up yet. Ask the user to set up their income first."}
+        return {
+            "error": "No financial profile set up yet. Ask the user to set up their income first."
+        }
 
     return {
         "label": scenario.label,
@@ -99,19 +105,32 @@ async def tool_simulate_loan(
 
 
 async def tool_match_schemes(
-    db: AsyncSession, user_id,
-    state: str | None = None, occupation: str | None = None,
-    education_level: str | None = None, business_type: str | None = None,
-    monthly_income: float | None = None, target_groups: list[str] | None = None,
+    db: AsyncSession,
+    user_id,
+    state: str | None = None,
+    occupation: str | None = None,
+    education_level: str | None = None,
+    business_type: str | None = None,
+    monthly_income: float | None = None,
+    target_groups: list[str] | None = None,
     query: str | None = None,
 ) -> dict:
     payload = SchemeMatchRequest(
-        state=state, occupation=occupation, education_level=education_level,
+        state=state,
+        occupation=occupation,
+        education_level=education_level,
         business_type=business_type,
-        monthly_income=Decimal(str(monthly_income)) if monthly_income is not None else None,
-        target_groups=target_groups, query=query,
+        monthly_income=(
+            Decimal(str(monthly_income))
+            if monthly_income is not None
+            else None
+        ),
+        target_groups=target_groups,
+        query=query,
     )
+
     results = await match_schemes(db, payload)
+
     return {
         "candidate_count": len(results),
         "results": [
@@ -127,9 +146,19 @@ async def tool_match_schemes(
     }
 
 
-async def tool_analyse_fraud_text(db: AsyncSession, user_id, input_type: str, text: str) -> dict:
-    payload = FraudAnalyseTextRequest(input_type=input_type, text=text)
+async def tool_analyse_fraud_text(
+    db: AsyncSession,
+    user_id,
+    input_type: str,
+    text: str,
+) -> dict:
+    payload = FraudAnalyseTextRequest(
+        input_type=input_type,
+        text=text,
+    )
+
     scan = await analyse_text(db, user_id, payload)
+
     return {
         "risk_level": scan.risk_level,
         "detected_signals": scan.detected_signals,
@@ -140,11 +169,7 @@ async def tool_analyse_fraud_text(db: AsyncSession, user_id, input_type: str, te
 
 
 # ---------------------------------------------------------------------------
-# Tool registry — the schemas here are what gets shown to the LLM so it
-# knows what tools exist and what arguments each expects. Plain JSON-schema
-# dicts, not Gemini-specific objects — Step 3 adapts these into whatever
-# shape the concrete provider's SDK requires, keeping this file itself
-# provider-neutral, same principle as embedding_service.py / llm_service.py.
+# Tool registry
 # ---------------------------------------------------------------------------
 
 TOOLS: list[ToolDefinition] = [
@@ -158,13 +183,21 @@ TOOLS: list[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "year": {"type": "integer", "description": "Year, e.g. 2026. Defaults to current month if omitted."},
-                "month": {"type": "integer", "description": "Month 1-12. Defaults to current month if omitted."},
+                "year": {
+                    "type": "integer",
+                    "description": "Year, e.g. 2026. Defaults to current month if omitted.",
+                },
+                "month": {
+                    "type": "integer",
+                    "description": "Month 1-12. Defaults to current month if omitted.",
+                },
             },
             "required": [],
         },
         executor=tool_get_financial_health,
+        required_consent="financial_analysis",
     ),
+
     ToolDefinition(
         name="simulate_loan",
         description=(
@@ -175,15 +208,34 @@ TOOLS: list[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "label": {"type": "string", "description": "A short name for this scenario, e.g. 'New Car Loan'."},
-                "proposed_amount": {"type": "number", "description": "The loan principal amount."},
-                "annual_interest_rate": {"type": "number", "description": "Annual interest rate as a percentage, e.g. 9.5."},
-                "tenure_months": {"type": "integer", "description": "Loan tenure in months."},
+                "label": {
+                    "type": "string",
+                    "description": "A short name for this scenario, e.g. 'New Car Loan'.",
+                },
+                "proposed_amount": {
+                    "type": "number",
+                    "description": "The loan principal amount.",
+                },
+                "annual_interest_rate": {
+                    "type": "number",
+                    "description": "Annual interest rate as a percentage, e.g. 9.5.",
+                },
+                "tenure_months": {
+                    "type": "integer",
+                    "description": "Loan tenure in months.",
+                },
             },
-            "required": ["label", "proposed_amount", "annual_interest_rate", "tenure_months"],
+            "required": [
+                "label",
+                "proposed_amount",
+                "annual_interest_rate",
+                "tenure_months",
+            ],
         },
         executor=tool_simulate_loan,
+        required_consent="financial_analysis",
     ),
+
     ToolDefinition(
         name="match_schemes",
         description=(
@@ -199,13 +251,21 @@ TOOLS: list[ToolDefinition] = [
                 "education_level": {"type": "string"},
                 "business_type": {"type": "string"},
                 "monthly_income": {"type": "number"},
-                "target_groups": {"type": "array", "items": {"type": "string"}},
-                "query": {"type": "string", "description": "What the user is looking for, in their own words."},
+                "target_groups": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "query": {
+                    "type": "string",
+                    "description": "What the user is looking for, in their own words.",
+                },
             },
             "required": [],
         },
         executor=tool_match_schemes,
+        required_consent="personalised_recommendations",
     ),
+
     ToolDefinition(
         name="analyse_fraud_text",
         description=(
@@ -217,12 +277,25 @@ TOOLS: list[ToolDefinition] = [
             "properties": {
                 "input_type": {
                     "type": "string",
-                    "enum": ["sms", "email", "whatsapp", "url", "upi_id", "investment_offer", "call_transcript", "payment_request"],
+                    "enum": [
+                        "sms",
+                        "email",
+                        "whatsapp",
+                        "url",
+                        "upi_id",
+                        "investment_offer",
+                        "call_transcript",
+                        "payment_request",
+                    ],
                 },
-                "text": {"type": "string", "description": "The message text to analyse."},
+                "text": {
+                    "type": "string",
+                    "description": "The message text to analyse.",
+                },
             },
             "required": ["input_type", "text"],
         },
         executor=tool_analyse_fraud_text,
+        required_consent="fraud_analysis",
     ),
 ]

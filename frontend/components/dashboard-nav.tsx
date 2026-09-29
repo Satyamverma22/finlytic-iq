@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearToken } from "@/lib/auth-token";
@@ -11,6 +12,7 @@ const LINKS = [
   { href: "/dashboard/schemes", label: "Scheme Finder" },
   { href: "/dashboard/fraud", label: "Fraud Protection" },
   { href: "/dashboard/copilot", label: "AI Copilot" },
+  { href: "/dashboard/consent", label: "Consent Center" },
 ];
 
 export function DashboardNav() {
@@ -30,14 +32,19 @@ export function DashboardNav() {
             key={link.href}
             href={link.href}
             className={`block px-3 py-2 rounded-md text-sm ${
-              pathname === link.href ? "bg-muted font-medium" : "hover:bg-muted"
+              pathname === link.href
+                ? "bg-muted font-medium"
+                : "hover:bg-muted"
             }`}
           >
             {link.label}
           </Link>
         ))}
       </div>
-      <Button variant="outline" onClick={logout}>Log out</Button>
+
+      <Button variant="outline" onClick={logout}>
+        Log out
+      </Button>
     </nav>
   );
 }
