@@ -4,13 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import service
-from app.auth.schemas import UserRegister, UserLogin, UserResponse, Token
+from app.auth.schemas import (
+    UserRegister,
+    UserLogin,
+    UserResponse,
+    Token,
+    DeleteAccountRequest,
+)
 from app.auth.dependencies import get_current_user
-from app.auth.security import create_access_token
+from app.auth.security import create_access_token, verify_password
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit_by_ip
 from app.audit.service import record_audit
 from app.shared.pii import mask_email
+
+
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -92,3 +100,21 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    payload: DeleteAccountRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(payload.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password.",
+        )
+
+    await record_audit(db, "auth.account_deleted", user_id=current_user.id)
+    await db.delete(current_user)
+    await db.commit()
