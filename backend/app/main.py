@@ -19,6 +19,7 @@ from app.copilot.router import router as copilot_router
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 from app.consent.router import router as consent_router
+from app.core.logging_config import configure_logging
 
 
 app = FastAPI(
@@ -62,3 +63,8 @@ async def health_check():
         status["redis"] = f"error: {e}"
 
     return status
+
+
+@app.on_event("startup")
+async def on_startup():
+    configure_logging()
