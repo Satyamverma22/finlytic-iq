@@ -4,12 +4,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 from app.auth.dependencies import get_current_user
-from app.consent.dependencies import require_consent
 from app.consent.dependencies import require_consent
 from app.auth.models import User
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit_by_user
 from app.schemes.match_service import match_schemes
 from app.schemes.models import Scheme
 from app.schemes.schemas import (
@@ -18,6 +17,7 @@ from app.schemes.schemas import (
     SchemeListResponse,
     SchemeSummary,
 )
+
 
 router = APIRouter(prefix="/api/schemes", tags=["schemes"])
 
@@ -29,6 +29,7 @@ async def match(
         require_consent("personalised_recommendations")
     ),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_user("scheme_match", 20, 60)),
 ):
     results = await match_schemes(db, payload)
 

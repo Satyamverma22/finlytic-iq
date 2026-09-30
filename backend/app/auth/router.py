@@ -1,5 +1,3 @@
-# app/auth/router.py
-
 from app.auth.models import User
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,6 +8,7 @@ from app.auth.schemas import UserRegister, UserLogin, UserResponse, Token
 from app.auth.dependencies import get_current_user
 from app.auth.security import create_access_token
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit_by_ip
 from app.audit.service import record_audit
 from app.shared.pii import mask_email
 
@@ -21,6 +20,7 @@ async def register(
     payload: UserRegister,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_ip("register", 5, 3600)),
 ):
     try:
         user = await service.register_user(db, payload)
@@ -47,6 +47,7 @@ async def login(
     payload: UserLogin,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_ip("login", 10, 60)),
 ):
     try:
         user = await service.authenticate_user(

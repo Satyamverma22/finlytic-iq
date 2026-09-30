@@ -16,6 +16,8 @@ from app.fraud.schemas import (
     FraudScanListResponse,
 )
 from app.audit.service import record_audit
+from app.core.rate_limit import rate_limit_by_user
+
 
 router = APIRouter(prefix="/api/fraud", tags=["fraud"])
 
@@ -45,6 +47,7 @@ async def analyse_text(
     request: Request,
     current_user: User = Depends(require_consent("fraud_analysis")),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_user("fraud_scan", 20, 60)),
 ):
     scan = await service.analyse_text(db, current_user.id, payload)
 
