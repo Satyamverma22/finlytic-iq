@@ -25,6 +25,18 @@ FRAUD_RULES: list[FraudRule] = [
     _rule(r"\b(UPI PIN|ATM PIN|debit card PIN)\b", "Requests a PIN.", 5),
     _rule(r"\bpassword\b", "Requests a password.", 4),
 
+          # Prompt-injection attempts — a message trying to manipulate an AI
+    # assistant analysing it is itself a strong red flag.
+    _rule(r"\bignore\s+(all\s+|the\s+)?(previous|prior|above)\s+instructions\b",
+          "Contains an attempt to override AI analysis instructions.", 5),
+    _rule(r"\bdisregard\s+(your|the)\s+(system\s+)?(previous\s+)?instructions\b",
+          "Contains an attempt to override AI analysis instructions.", 5),
+    _rule(r"\b(reveal|show)\s+(your|the)\s+(system\s+)?prompt\b",
+          "Attempts to extract system instructions.", 5),
+    _rule(r"\btell\s+the\s+user\s+(this|it)\s+is\s+(safe|legitimate|not\s+a\s+scam)\b",
+          "Attempts to instruct the AI to declare the message safe.", 5),
+
+          
     # Urgency / pressure tactics
     _rule(r"\bwithin\s+(the\s+)?(24|12|next\s+few)\s*(hours|minutes)\b",
           "Uses a tight time-pressure deadline.", 2),
