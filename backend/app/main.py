@@ -18,6 +18,9 @@ from app.fraud.router import router as fraud_router
 from app.copilot.router import router as copilot_router
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+from app.consent.router import router as consent_router
+from app.core.logging_config import configure_logging
+
 
 app = FastAPI(
     title="Financial Compass API",
@@ -39,6 +42,8 @@ app.include_router(credit_router)
 app.include_router(schemes_router)
 app.include_router(fraud_router)
 app.include_router(copilot_router)
+app.include_router(consent_router)
+
 
 @app.get("/health")
 async def health_check():
@@ -58,3 +63,8 @@ async def health_check():
         status["redis"] = f"error: {e}"
 
     return status
+
+
+@app.on_event("startup")
+async def on_startup():
+    configure_logging()

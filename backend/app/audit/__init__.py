@@ -1,0 +1,1 @@
+from app.audit.models import AuditLog  # noqa: F401

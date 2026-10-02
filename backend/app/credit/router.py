@@ -2,33 +2,36 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.consent.dependencies import require_consent
 from app.auth.models import User
 from app.core.database import get_db
 from app.credit import service
-from app.credit.schemas import ScenarioCreate, ScenarioResponse
-from fastapi import Query
-from sqlalchemy import select, func, desc
+from app.credit.models import CreditScenario
+from app.credit.risk_indicator import build_scenario_risk
 from app.credit.schemas import (
+    ScenarioCreate,
+    ScenarioResponse,
     ScenarioCompareRequest,
     ScenarioCompareResponse,
     ComparisonRow,
+    ScenarioListResponse,
 )
-
-from app.credit.models import CreditScenario
-from app.credit.risk_indicator import build_scenario_risk
-from app.credit.schemas import ScenarioListResponse
 
 router = APIRouter(prefix="/api/credit-scenarios", tags=["credit"])
 
 
-@router.post("", response_model=ScenarioResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ScenarioResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_scenario(
     payload: ScenarioCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("financial_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
     today = date.today()
@@ -66,10 +69,12 @@ async def create_scenario(
 async def list_scenarios(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("financial_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
-    base_query = select(CreditScenario).where(CreditScenario.user_id == current_user.id)
+    base_query = select(CreditScenario).where(
+        CreditScenario.user_id == current_user.id
+    )
 
     count_result = await db.execute(
         select(func.count()).select_from(base_query.subquery())
@@ -77,15 +82,20 @@ async def list_scenarios(
     total = count_result.scalar_one()
 
     result = await db.execute(
-        base_query.order_by(desc(CreditScenario.created_at)).offset(skip).limit(limit)
+        base_query
+        .order_by(desc(CreditScenario.created_at))
+        .offset(skip)
+        .limit(limit)
     )
     scenarios = result.scalars().all()
 
     items = []
     for scenario in scenarios:
         risk_category, risk_factors = build_scenario_risk(
-            scenario.resulting_dti, scenario.remaining_cash_flow
+            scenario.resulting_dti,
+            scenario.remaining_cash_flow,
         )
+
         items.append(
             ScenarioResponse(
                 id=scenario.id,
@@ -107,18 +117,25 @@ async def list_scenarios(
             )
         )
 
-    return ScenarioListResponse(total=total, skip=skip, limit=limit, items=items)
+    return ScenarioListResponse(
+        total=total,
+        skip=skip,
+        limit=limit,
+        items=items,
+    )
 
 
 @router.post("/compare", response_model=ScenarioCompareResponse)
 async def compare_scenarios(
     payload: ScenarioCompareRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("financial_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         scenarios = await service.get_scenarios_for_comparison(
-            db, current_user.id, payload.scenario_ids
+            db,
+            current_user.id,
+            payload.scenario_ids,
         )
     except service.ScenarioNotFoundError as e:
         raise HTTPException(
@@ -127,10 +144,13 @@ async def compare_scenarios(
         )
 
     scenario_responses = []
+
     for scenario in scenarios:
         risk_category, risk_factors = build_scenario_risk(
-            scenario.resulting_dti, scenario.remaining_cash_flow
+            scenario.resulting_dti,
+            scenario.remaining_cash_flow,
         )
+
         scenario_responses.append(
             ScenarioResponse(
                 id=scenario.id,
@@ -175,4 +195,7 @@ async def compare_scenarios(
         ),
     ]
 
-    return ScenarioCompareResponse(scenarios=scenario_responses, comparison=comparison)
+    return ScenarioCompareResponse(
+        scenarios=scenario_responses,
+        comparison=comparison,
+    )

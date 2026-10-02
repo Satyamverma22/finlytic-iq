@@ -1,15 +1,25 @@
 # app/transactions/router.py
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.consent.dependencies import require_consent
 from app.auth.models import User
 from app.core.database import get_db
 from app.transactions import service
 from app.transactions.models import Transaction
 from app.transactions.schemas import TransactionListResponse, UploadSummary
+from app.audit.service import record_audit
 
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -17,8 +27,9 @@ router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
 @router.post("/upload", response_model=UploadSummary)
 async def upload_transactions(
+    request: Request,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("financial_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
     rows = await service.read_csv_upload(file)
@@ -49,6 +60,18 @@ async def upload_transactions(
         file.filename,
     )
 
+    await record_audit(
+        db,
+        "transactions.upload",
+        user_id=current_user.id,
+        details={
+            "rows_stored": rows_stored,
+            "duplicates_skipped": duplicate_count,
+            "rows_failed": len(row_errors),
+        },
+        request=request,
+    )
+
     return UploadSummary(
         filename=file.filename,
         rows_received=len(rows),
@@ -58,11 +81,12 @@ async def upload_transactions(
         errors=row_errors,
     )
 
+
 @router.get("", response_model=TransactionListResponse)
 async def list_transactions(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("financial_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
     base_query = select(Transaction).where(

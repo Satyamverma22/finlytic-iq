@@ -56,9 +56,9 @@ async def run_copilot_turn(
 
             if contains_overclaim(reply):
                 logger.warning(
-                    "Copilot reply contained an overclaim phrase, replaced: %r",
-                    reply,
-                )
+                    "Copilot reply contained an overclaim phrase and was replaced (length=%d)",
+                    len(reply),
+            )
                 reply = SAFE_FALLBACK_REPLY
 
             messages.append({

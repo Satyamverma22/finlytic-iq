@@ -1,16 +1,23 @@
 # app/fraud/router.py
 
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, Query, Request, status
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
 
-from app.auth.dependencies import get_current_user
+from app.consent.dependencies import require_consent
 from app.auth.models import User
 from app.core.database import get_db
 from app.fraud import service
 from app.fraud.models import FraudScan
 from app.fraud.rule_engine import extract_urls
-from app.fraud.schemas import FraudAnalyseTextRequest, FraudScanResponse, FraudScanListResponse
+from app.fraud.schemas import (
+    FraudAnalyseTextRequest,
+    FraudScanResponse,
+    FraudScanListResponse,
+)
+from app.audit.service import record_audit
+from app.core.rate_limit import rate_limit_by_user
+
 
 router = APIRouter(prefix="/api/fraud", tags=["fraud"])
 
@@ -30,31 +37,57 @@ def _to_response(scan: FraudScan) -> FraudScanResponse:
     )
 
 
-@router.post("/analyse-text", response_model=FraudScanResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/analyse-text",
+    response_model=FraudScanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def analyse_text(
     payload: FraudAnalyseTextRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
+    current_user: User = Depends(require_consent("fraud_analysis")),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_user("fraud_scan", 20, 60)),
 ):
     scan = await service.analyse_text(db, current_user.id, payload)
-    return _to_response(scan)
 
+    await record_audit(
+        db,
+        "fraud.scan",
+        user_id=current_user.id,
+        resource_type="fraud_scan",
+        resource_id=str(scan.id),
+        details={
+            "input_type": payload.input_type,
+            "risk_level": scan.risk_level,
+        },
+        request=request,
+    )
+
+    return _to_response(scan)
 
 
 @router.get("/scans", response_model=FraudScanListResponse)
 async def list_scans(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_consent("fraud_analysis")),
     db: AsyncSession = Depends(get_db),
 ):
-    base_query = select(FraudScan).where(FraudScan.user_id == current_user.id)
+    base_query = select(FraudScan).where(
+        FraudScan.user_id == current_user.id
+    )
 
-    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar_one()
 
     result = await db.execute(
-        base_query.order_by(desc(FraudScan.created_at)).offset(skip).limit(limit)
+        base_query
+        .order_by(desc(FraudScan.created_at))
+        .offset(skip)
+        .limit(limit)
     )
     scans = result.scalars().all()
 

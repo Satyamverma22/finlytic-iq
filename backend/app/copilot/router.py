@@ -11,6 +11,7 @@ from app.auth.models import User
 from app.copilot import service
 from app.copilot.schemas import ChatRequest, ChatResponse
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit_by_user
 
 router = APIRouter(prefix="/api/copilot", tags=["copilot"])
 
@@ -20,6 +21,7 @@ async def chat(
     payload: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_by_user("copilot_chat", 30, 60)),
 ):
     llm = get_llm_provider()
     try:
@@ -27,5 +29,9 @@ async def chat(
             db, current_user.id, llm, payload.message, payload.conversation_id
         )
     except service.ConversationNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
     return ChatResponse(**result)
