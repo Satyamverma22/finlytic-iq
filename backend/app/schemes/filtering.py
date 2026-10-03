@@ -1,8 +1,18 @@
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemes.models import Scheme
 from app.schemes.schemas import SchemeSearchProfile
+
+
+def _ci_array_overlap(column, values: list[str]):
+    lowered = [v.lower() for v in values]
+
+    elem = func.unnest(column).column_valued("elem")
+
+    return exists(
+        select(1).where(func.lower(elem).in_(lowered))
+    )
 
 
 async def filter_schemes_by_profile(
@@ -12,7 +22,7 @@ async def filter_schemes_by_profile(
 
     conditions = []
 
-    # Normalize user input to match the stored seed-data format.
+    # Normalize user input
     state = profile.state.title() if profile.state else None
 
     occupation = (
@@ -53,7 +63,10 @@ async def filter_schemes_by_profile(
         conditions.append(
             or_(
                 Scheme.occupations.is_(None),
-                Scheme.occupations.overlap([occupation]),
+                _ci_array_overlap(
+                    Scheme.occupations,
+                    [occupation],
+                ),
             )
         )
 
@@ -62,7 +75,10 @@ async def filter_schemes_by_profile(
         conditions.append(
             or_(
                 Scheme.education_levels.is_(None),
-                Scheme.education_levels.overlap([education_level]),
+                _ci_array_overlap(
+                    Scheme.education_levels,
+                    [education_level],
+                ),
             )
         )
 
@@ -71,7 +87,10 @@ async def filter_schemes_by_profile(
         conditions.append(
             or_(
                 Scheme.business_types.is_(None),
-                Scheme.business_types.overlap([business_type]),
+                _ci_array_overlap(
+                    Scheme.business_types,
+                    [business_type],
+                ),
             )
         )
 
@@ -80,7 +99,10 @@ async def filter_schemes_by_profile(
         conditions.append(
             or_(
                 Scheme.target_groups.is_(None),
-                Scheme.target_groups.overlap(target_groups),
+                _ci_array_overlap(
+                    Scheme.target_groups,
+                    target_groups,
+                ),
             )
         )
 
