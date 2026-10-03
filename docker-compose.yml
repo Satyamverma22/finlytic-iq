@@ -19,5 +19,31 @@ services:
     ports:
       - "6379:6379"
 
+  backend:
+    build: ./backend
+    container_name: fc-backend
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      DATABASE_URL: postgresql://fc_user:fc_password@postgres:5432/financial_compass
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: fc-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   pgdata:
