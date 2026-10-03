@@ -1,15 +1,49 @@
 # tests/conftest.py
 
 import uuid
+from unittest.mock import patch
+
+
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
+
+
+
 from app.main import app
 from app.core.database import engine
 from app.core.redis_client import redis_client
 
+
+class FakeLLM:
+    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+        return "Test response."
+
+    async def generate_with_tools(
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        tools: list,
+    ) -> dict:
+        return {
+            "type": "text",
+            "content": "Test response.",
+        }
+
+
+@pytest.fixture(autouse=True)
+def mock_llm_provider():
+    fake_llm = FakeLLM()
+
+    with patch(
+        "app.copilot.router.get_llm_provider",
+        return_value=fake_llm,
+    ):
+        yield
+
+        
 
 def pytest_collection_modifyitems(config, items):
     """Force every async test onto the SAME session-scoped event loop as
