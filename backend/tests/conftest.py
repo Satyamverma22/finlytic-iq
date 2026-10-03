@@ -40,9 +40,11 @@ def mock_llm_provider():
     with patch(
         "app.copilot.router.get_llm_provider",
         return_value=fake_llm,
+    ), patch(
+        "app.fraud.service.get_llm_provider",
+        return_value=fake_llm,
     ):
         yield
-
         
 
 def pytest_collection_modifyitems(config, items):
