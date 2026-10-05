@@ -1,7 +1,13 @@
+import logging
+import time
+
 from abc import ABC, abstractmethod
 from functools import lru_cache
 
 from app.core.config import settings
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class LLMProvider(ABC):
@@ -52,17 +58,45 @@ class GeminiLLMProvider(LLMProvider):
         # pyrefly: ignore [missing-import]
         from google.genai import types
 
-        response = await asyncio.to_thread(
-            self._client.models.generate_content,
-            model=self.MODEL_NAME,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.2,
-            ),
-        )
+        start = time.monotonic()
 
-        return response.text
+        try:
+            response = await asyncio.to_thread(
+                self._client.models.generate_content,
+                model=self.MODEL_NAME,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.2,
+                ),
+            )
+
+            latency_ms = round(
+                (time.monotonic() - start) * 1000,
+                1,
+            )
+
+            logger.info(
+                "ai_call model=%s latency_ms=%s status=ok",
+                self.MODEL_NAME,
+                latency_ms,
+            )
+
+            return response.text
+
+        except Exception:
+            latency_ms = round(
+                (time.monotonic() - start) * 1000,
+                1,
+            )
+
+            logger.warning(
+                "ai_call model=%s latency_ms=%s status=error",
+                self.MODEL_NAME,
+                latency_ms,
+            )
+
+            raise
 
     async def generate_with_tools(
         self,
@@ -124,20 +158,48 @@ class GeminiLLMProvider(LLMProvider):
                     )
                 )
 
-        response = await asyncio.to_thread(
-            self._client.models.generate_content,
-            model=self.MODEL_NAME,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.2,
-                tools=[
-                    types.Tool(
-                        function_declarations=function_declarations
-                    )
-                ],
-            ),
-        )
+        start = time.monotonic()
+
+        try:
+            response = await asyncio.to_thread(
+                self._client.models.generate_content,
+                model=self.MODEL_NAME,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.2,
+                    tools=[
+                        types.Tool(
+                            function_declarations=function_declarations
+                        )
+                    ],
+                ),
+            )
+
+            latency_ms = round(
+                (time.monotonic() - start) * 1000,
+                1,
+            )
+
+            logger.info(
+                "ai_call_with_tools model=%s latency_ms=%s status=ok",
+                self.MODEL_NAME,
+                latency_ms,
+            )
+
+        except Exception:
+            latency_ms = round(
+                (time.monotonic() - start) * 1000,
+                1,
+            )
+
+            logger.warning(
+                "ai_call_with_tools model=%s latency_ms=%s status=error",
+                self.MODEL_NAME,
+                latency_ms,
+            )
+
+            raise
 
         part = response.candidates[0].content.parts[0]
 

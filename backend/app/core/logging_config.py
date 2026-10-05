@@ -66,5 +66,9 @@ def configure_logging() -> None:
         "audit",
         "copilot",
         "fraud",
+        "requests",
+        "ai",
     ):
-        logging.getLogger(name).addFilter(filter_)
+        logger = logging.getLogger(name)
+        logger.addFilter(filter_)
+        logger.setLevel(logging.INFO)

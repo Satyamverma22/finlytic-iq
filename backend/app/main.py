@@ -20,6 +20,7 @@ from app.copilot.router import router as copilot_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.consent.router import router as consent_router
 from app.core.logging_config import configure_logging
+from app.core.middleware import request_logging_middleware
 
 
 app = FastAPI(
@@ -27,6 +28,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.middleware("http")(request_logging_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
