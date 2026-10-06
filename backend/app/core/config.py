@@ -1,5 +1,6 @@
 # app/core/config.py
 
+# pyrefly: ignore [missing-import]
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,9 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str
+
+    # CORS
+    cors_origins: str = "http://localhost:3000"
 
     # Auth (used starting Phase 2, but declared now so .env stays the single source of truth)
     jwt_secret: str = "dev-secret-change-me"
@@ -24,10 +28,10 @@ class Settings(BaseSettings):
     storage_bucket: str = ""
 
     model_config = SettingsConfigDict(
-    env_file="../.env",
-    env_file_encoding="utf-8",
-    case_sensitive=False,
-    extra="ignore",
+        env_file="../.env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
 
 

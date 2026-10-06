@@ -1,6 +1,7 @@
 # app/main.py
 
 # pyrefly: ignore [missing-import]
+from app.core.config import settings
 from fastapi import FastAPI
 # pyrefly: ignore [missing-import]
 from sqlalchemy import text
@@ -24,14 +25,14 @@ from app.core.middleware import request_logging_middleware
 
 
 app = FastAPI(
-    title="Financial Compass API",
+    title="Finlytic IQ API",
     version="0.1.0",
 )
 
 app.middleware("http")(request_logging_middleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
